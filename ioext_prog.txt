@@ -1,0 +1,143 @@
+                            Program IOEXT_PROG
+                              9 October 2009
+
+
+ioext_prog [options]
+
+Program the firmware into a I/O extender board compatible with the Embed
+Inc IOEXT specification.  A Embed Inc or compatible PIC programmer must be
+connected to the computer running this program and to the target system
+before this program is run.
+
+The default operation is to update the unit to the latest version of the
+same firmware already in the unit.
+
+This program also manages device serial numbers.  Each device must have a
+unique serial number within its firmware and vendor type.  If the unit
+contains valid firmare and the type is not changed, then the existing
+serial number is preserved.  This is the normal case for field firmare
+updates.  If the unit does not contain valid firmware or the firmware type
+is being changed, then a new serial number is assigned.
+
+The command line options are:
+
+  -HEX filename
+  filename
+
+       Specifies the input file name.  This must be a HEX file as produced
+       by MPLAB.  The ".hex" file name suffix will be assumed and may be
+       omitted from the FILENAME argument.
+
+       The first command line option that does not start with a dash (-)
+       is assumed to be the HEX input file name.  This is a short form of
+       supplying the file name for convenience, but can not be used when
+       the file name starts with a dash.  The full form of this option
+       using the -HEX keyword works whether the file name starts with a
+       dash or not.  In either case, if the file name includes spaces or
+       some other special characters, it must be enclosed in quotes ("")
+       or apostrophies ('').
+
+       The program will first attempt to use the target HEX file pathname
+       as resolved from the current directory.  If that fails, then the
+       file name is resolved from the directory src/ioext within the
+       software installation directory.  It is a hard error of that fails.
+
+  -SIO n
+
+       Selects the system serial line number to use in communicating with
+       the programmer.  Only that programmer is accessed.
+
+       The default is to use the first available programmer known to be
+       connected to the system.  If no known connected programmer exists,
+       then the programmer connected to serial line 1 is used.
+
+  -N name
+
+       Selects the programmer by name.
+
+       If no other command line option specifies a connection means to the
+       programmer (like -SIO), then the first programmer of this name from
+       those known to be connected to the system is used.  A programmer is
+       known to be connected to the system if it is connected and uses a
+       connection type that the system can enumerate, such as USB.
+
+       If a connection type is specified, the first programmer found with
+       that name and connection type is used.  Note that some connection
+       types inherently specify a unique programmer, such as serial line,
+       since only a single device can be attached to any one serial line.
+       In that case it is an error if the programmer does not have the
+       indicated name or does not have a name.
+
+       The NAME parameter is case-sensitive.  Programmer names can
+       generally be set by the user (see the PIC_CTRL command).  It is
+       strongly recommended that all programmers connected to a system
+       have a unique name.  Otherwise the choice of programmer used when a
+       non-unique name is given is arbitrary, and there is no way to
+       select between multiple programmers of the same name.  All Embed
+       Inc programmers that have names are initially given globally unique
+       names by Embed Inc.
+
+  -PIC name
+
+       Explicitly identifies the target PIC.  Example names are "16F876",
+       "18F452", and "16LF628".  Note that the suffixes denoting package
+       type, temperature range, etc, are not included.  The NAME argument
+       is case-insensitive.
+
+       If this command line option is omitted, then the programmer
+       attempts to determine the target chip type by reading its hard
+       coded ID.  If successful, the program will proceed assuming the
+       most generic variant with that ID.  For example, the 16F628 and
+       16LF628 have the same ID word.  If that ID is found, then the
+       16F628 will be assumed unless this command line option is used and
+       16LF628 specified.
+
+       Some PICs do not contain hard coded IDs, and it is not possible to
+       determine the exact target chip type.  It appears that PICs with
+       the 12 bit "baseline" core, such as the 10F2xx, do not contain
+       target IDs.  In case of such a target PIC, this command line option
+       is required.  The program will abort with an error condition if
+       this command line option is omitted and the target PIC type can not
+       be determined.
+
+       If this command line option is supplied, then that particular
+       target PIC is verified to the extent possible.  If that target type
+       has a unique ID, then the ID is read and checked against the
+       expected value.  If the target has no unique ID, some test are
+       performed to verify the target chip, but these are not guaranteed
+       to be conclusive.  The program will abort with an error condition
+       only if it can conclusively determine that the target PIC is not
+       the one specified with this command line option.
+
+  -V version
+
+       Set the version of the current firwmare to program into the target
+       unit.  The target must contain valid firmware so that its type can
+       be determined.  The HEX file name will be <fwtype><version>.HEX in
+       the src/ioext directory within the software installation directory.
+       FWTYPE is name of this firmware type and VERSION is the specified
+       version in decimal, padded with leading zeros to at least two
+       digits.
+
+  -SHOW
+
+       Show the version and related information about the firmware
+       currently in the unit without altering it.  This command line
+       option is mutually exclusive with -HEX or -V.
+
+  -CHANGE
+
+       Allow the firmware type to be changed.  By default it is a error to
+       attempt to program firmware of a different type into the unit than
+       is already in the unit.  The purpose is to reduce the chance of
+       accidentally programming incompatible firmware into a device, since
+       most devices are intended to run only a single type of firmware.
+       Use this command line option only if you know exactly what you are
+       doing.
+
+  -FORCE
+
+       Force writing the new firmware into the target, even if it is the
+       same version as already in the target.  The default is to skip the
+       programming operation if the new and existing firmware vendor IDs,
+       types, versions, and sequence numbers match exactly.

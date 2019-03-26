@@ -1,0 +1,9 @@
+ioext_bus.obj
+ioext_bus_can.obj
+ioext_cfg.obj
+ioext_dev.obj
+ioext_event.obj
+ioext_io.obj
+ioext_mem.obj
+ioext_set.obj
+ioext_start.obj

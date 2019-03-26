@@ -1,0 +1,527 @@
+                Embed Inc IOEXT CAN Protocol Specification
+                       Version 0.1, 10 January 2010
+
+This document describes the protocol used by CAN-connected devices of the
+Embed Inc I/O extender system.
+
+
+Revisions
+
+  0.1, 10 January 2010
+
+    First internal version.
+
+
+IOEXT System Overview
+
+  The Embed Inc IOEXT input/output extender system provides a procedural
+  interface on a host computer to a large number of real world inputs and
+  output.  Example outputs are 5 volt logic signals, relays, LED drivers,
+  and high current low side switches.  Example inputs are logic signals,
+  mechanical switch closures, and voltage and current sense.  Many more of
+  each type are possible.
+
+  A IOEXT system is logically organized into "busses", "devices", and "I/O
+  lines".  The host computer has the ability to send and receive data on
+  each bus.  Example busses are USB, RS-485, and CAN, with many others
+  possible.  Some busses may be native to a host with others requiring
+  specific external hardware to access.
+
+  Devices are connected to these busses and are in turn connected to one
+  or more I/O lines.  Different devices can have very different numbers
+  and types of I/O lines.  For example, one device may be only a relay
+  driver and have 8 single pole double throw outputs.  Another device may
+  have a mix of digital inputs and outputs, with some of the outputs
+  configurable to low side drive only, PWM output, standard 5V logic
+  output, etc.
+
+  The I/O lines are the real world end inputs or outputs of the IOEXT
+  system.  The term "I/O line" is used regardless of whether it is really
+  a single electrical connection or something else.  A I/O line may be a
+  mechanical switch closure of a relay, and therefore be two electrical
+  signals, or a mechanical pressure input which is not electrical in
+  nature at all.
+
+  Busses and devices are merely the means to access the I/O lines.  Each
+  I/O line in a system is uniquely named.  The IOEXT system presents the
+  abstraction of a flat list of I/O lines that can be individually
+  accessed, regardless of what device and bus individual lines are
+  connected to.  Applications can determine the bus and device topology,
+  but need not do so to perform input and output operations.
+
+  The IOEXT system is extensible to large numbers of devices, and
+  therefore I/O lines.  The protocol is separately defined for each bus
+  type, since each bus type has its own characteristics and imposes its
+  own limitations.  The lowest level information carried over each bus is
+  intended to be similar, but flexibility to optimally use a particular
+  bus type is necessary.  For example, packets on CAN busses are limited
+  to 8 data bytes, whereas packets on ethernet busses can carry up to 1500
+  data bytes.  It would be inefficient to limit all ethernet packets to 8
+  data bytes.
+
+
+Globally Unique Device Identification
+
+  Each IOEXT device has a globally unique ID.  This is a requirement for
+  all IOEXT devices.  This unique ID is 7 bytes (56 bits) in size.  The
+  bytes in the ID are:
+
+    Byte0:byte1  -  Vendor ID.
+
+      Vendor IDs are assigned by Embed Inc.  The special vendor ID of 0 is
+      reserved.
+
+    Byte2  -  Device type.
+
+      Differentiates different device types, or products, of a single
+      vendor.  For example, type 0 may be a 16 channel temperature sensor
+      and type 1 a 8 channel relay output driver of a specific vendor.
+      Other vendors are free to assign these types to completely different
+      devices.  They must, however, freely and publicly provide a list of
+      assigned device types with descriptions for any publicly released
+      devices.
+
+    Byte3:byte4:byte5:byte6  -  Serial number.
+
+      This 32 bit number must be unique between every instance (copy) of a
+      device within the vendor ID and device type.
+
+  No two physical devices anywhere in the world will have exactly the same
+  7 byte unique ID.
+
+
+CAN Bus Protocol
+
+  This document describes the protocol on a CAN bus in a IOEXT system. All
+  devices on the CAN bus must adhere to this protocol.  In other words,
+  mixing IOEXT devices and other devices on the same CAN bus is not
+  allowed.
+
+  This section assumes the reader has familiarity with CAN.  It does not
+  attempt to describe CAN, only how the IOEXT system uses CAN.
+
+  Electrical
+
+    The IOEXT uses the common differential signalling system implemented
+    by various off the shelf CAN bus drivers.  The two differential
+    signals are called CANH and CANL.  In the recessive state, both lines
+    float at about 2.5 volts.  In the dominant state, CANH is pulled high
+    by 900mV and CANL low by 900mV.  CAN is a linear, sometimes called
+    "daisy chain", topology.  It therefore has two clear ends.  Both ends
+    must be terminated with 120 ohms between CANH and CANL.  The two lines
+    are usually implemented as a twisted pair of wires, which should have
+    a characteristic impedance near 120 ohms.  The impedence of the CAN
+    bus to differential signals at any single point is therefore about 60
+    ohms.  The Microchip MCP2551 is a example CAN driver chip intended for
+    this type of CAN bus.
+
+    The CAN bit rate is 500 Kbits/second, or 2uS per bit.  This allows for
+    a CAN bus several 10s of meters in length.  This is a good choice for
+    something the size of a normal room in a building or a large piece of
+    machinery.  Since the protocol is independent of bit rate, a different
+    bit rate can be used transparently to the rest of the system.  This is
+    allowed, but not require to be supported by IOEXT-compatible devices.
+    End users that set up a CAN bus in a IOEXT system at other than the
+    standard bit rate must arrange on their own for all devices on the bus
+    to operate at this bit rate.
+
+  Bus Organization
+
+    There is exactly one host interface on the CAN bus, with any number of
+    devices up to the electrical limit.  The IOEXT software on the host
+    sends and receives CAN messages via the host interface.  The host
+    interface is not a IOEXT device.  It is merely the host computer's
+    means of sending and receiving CAN messages.
+
+    All bus communication is to or from the host interface.  The host may
+    send message intended for all bus devices or only a single one.
+    Messages sent by devices are only intended for the host interface.  In
+    other words, bus devices do not communicate amongst themselves.
+
+  Bus Addresses
+
+    CAN messages have either a 11 bit or 29 bit message ID.  These
+    describe the content of the message but are not addresses and
+    therefore don't specify a particular sender or recipient.  Since CAN
+    messages contain at most 8 data bytes and it takes 7 data bytes to
+    uniquely identify every device, a different scheme is needed than to
+    send the 7 byte ID in every message.
+
+    To make communication more efficient, each device is assigned a
+    temporary 8 bit bus address by the host.  Bus address 0 is reserved,
+    so that allows for a maximum of 255 devices on a CAN bus.  Since the
+    electical limitation is lower than that, it imposes no additional
+    restriction.
+
+    The details of how addresses are assigned and used are described later
+    in this document.  Briefly, each device that has not been assigned a
+    bus address periodically sends a message with its unique ID.  The host
+    then responds with a message containing the same unique ID and the
+    assigned bus address for that device.  The CAN collision detection
+    mechanism guarantees all messages are sequential, even if two devices
+    attempt to transmit at exactly the same time.
+
+    Normal operations on a device's I/O lines are not possible until a bus
+    address has been assigned.  Once a bus address has been assigned, it
+    is sent in the low 8 bits of the 29 bit CAN extended frame IDs of
+    messages to and from that particular device.
+
+  Standard Frames
+
+    Standard CAN frames (as apposed to extended frames) contain a 11 bit
+    ID and up to 8 data bytes.  The entire 11 bit frame ID is used as a
+    opcode ID.  The amount and meaning of data bytes is specified
+    separately for each opcode.  The list of standard frame opcodes and
+    their meanings is described in a later section of this document.
+
+    In general, standard frames are used for bus management and to
+    communicate with devices that do not yet have a bus address assigned
+    to them.
+
+    Standard frames always have a higher precedence on the CAN bus over
+    extended frames.  Messages with lower IDs have precedence over
+    messages with higher IDs.  Therefore the standard frame with ID 0 has
+    the highest possible precedence on the CAN bus, meaning it will win
+    arbitration if it collides with a message with a different ID.
+
+  Extended Frames
+
+    Extended CAN frames contain a 29 bit ID and up to 8 data bytes.  The
+    29 bit ID is broken into various fields by the IOEXT protocol.  In
+    order from most significant (bit 28) to least significant (bit 0), the
+    fields of a extended frame ID are:
+
+      Bits 28-24  -  OPCODE, 10 bits
+
+        The opcode describes the meaning of the message.  The number and
+        meaning of the data bytes are specified separately for each
+        opcode.  The list of extended frame opcodes and their meaning is
+        described in a later section of this document.
+
+      Bit 18  -  Reserved, set to 0 for now
+
+      Bit 17  -  Reserved, set to 0 for now
+
+      Bit 16  -  CMD
+
+        CMD = 1 indicates this is a command with data according to the
+        opcode.  CMD = 0 indicates this is a acknowledge to a received
+        command.  Whether a acknowledge frame needs to be sent in response
+        to a command depends on the opcode.  Acknoledge frames never
+        contain data bytes.
+
+      Bit 15  -  ASYNC
+
+        This bit 1 indicates this message is being sent asynchronously,
+        and not in direct response to another command.
+
+      Bit 14  -  ACKREQ
+
+        This bit set indicates that a ACK frame is expected by the sender.
+        If this bit is set, the receiver of the message must send a ACK
+        frame as soon as possible.  The sender may assume the message was
+        lost if no ACK frame is received within a specified time.  Not all
+        opcodes support requesting ACK.  This bit must be 0 for opcodes
+        that do not support ACKs.
+
+      Bit 13  -  NFIRST
+
+        This frame is a continuation of a larger message.  This bit is
+        always cleared in the first frame of a larger message, and set in
+        all subsequent frames of the same message.  This bit is therefore
+        0 in all single frame messages.
+
+      Bit 12  -  NLAST
+
+        This is not the last frame of a larger message.  When this bit is
+        set, at least one more frame will follow in the message.  This bit
+        is always 0 in single frame messages.
+
+      Bits 11-8  -  SEQ, 4 bits
+
+        For multi-frame messages, this is the sequence number of the frame
+        within the message, modulo 16.  The sequence number of the first
+        frame of a message is 0, incrementing by 1 each subsequent frame.
+        This field provides a way of detecting a lost frame or possibly a
+        lost ACK within a larger message.  SEQ must be set to the same
+        value in a ACK frame as it was in the frame being ACKed.
+
+        For single frame messages (NFIRST = 0, NLAST = 0) there is no
+        sequence of frames, so this field can be used for other purposes.
+        The meaning of this field is then dependent on the command.  If
+        the SEQ field value is not specified for a command, then it must
+        be 0.
+
+      Bits 7-0  -  ADR, 8 bits
+
+        The temporarily assigned bus address of the device this message is
+        to or from.  Devices must ignore all extended frames that do not
+        contain their bus address in this field.  They must also include
+        their bus address in this field in any extended frames sent.
+        Devices that do not have a assigned bus address must ignore all
+        extended frames and must not send extended frames.
+
+
+Standard Frame Commands
+
+  This section describes the details of each supported command that can be
+  carried in a standard (not extended) CAN frame.  The different commands
+  are uniquely identified by their opcode.  The entire 11 bit frame ID is
+  the opcode value.  There are therefore 2048 possible unique commands,
+  with opcodes ranging from 0 to 2047.  No device should ever send a
+  undefined opcode.  However, a bus may contain a mix of old and new
+  devices, with new devices implementing opcodes unknown to the old
+  devices.  All devices must therefore ignore frames with opcodes unknown
+  to them.
+
+  Commands are listed below starting with their name as it appears in
+  other documentation and the source code.  The name is followed by a
+  colon (:), which is followed by the opcode number.  For commands that
+  contain data bytes, the opcode number is followed by the names of the
+  fields in the data bytes.  Fields are listed in data byte order, and in
+  high to low bit order within data bytes.  The highest (most significant)
+  bit of a byte is numbered 7, with the lowest (least significant)
+  numbered 0.  Unless otherwise noted in the command description, the
+  following applies to each data field:
+
+    1 - The size is one byte (8 bits).
+
+    2 - The data format is unsigned integer.
+
+    3 - Fields that straddle byte boundaries contain their most
+        significant bits before the boundary and the remaining less
+        significant bits after.  This means that multi-byte fields are in
+        high to low byte order.
+
+  The defined commands are:
+
+  BUSRESET: 0
+
+    Sent by host.
+
+    All devices must reset their CAN bus state.  This cancels any assigned
+    bus addresses.  No device will have a assigned bus address after this
+    command is successfully processed.
+
+  NODEADR: 2046 vendor type serial adr
+
+    Sent by host.
+
+    Assigns the temporary bus address ADR to a specific device.  The
+    device is uniquely identified by VENDOR, TYPE, and SERIAL.  VENDOR is
+    the 16 bit vendor ID, TYPE is the 8 bit device type within the vendor,
+    and SERIAL is the 32 bit serial number within that vendor and type.
+
+    The new assigned bus address takes effect immediately, regardless of
+    what address, if any, was previously assigned to the device.  The
+    special bus address of 0 is reserved.  ADR of 0 unassigns the bus
+    address of the device.
+
+  REQADR: 2047 vendor type serial
+
+    Sent by device.
+
+    Requests the host to assign a bus address.  This message should be
+    sent by devices periodically that do not have a assigned address.
+    Devices must not send this message more often than every 2 seconds.
+    This command is the mechanism by which new devices on the bus are
+    identified.  Devices therefore must send this message after power up
+    or after receiving a BUSRESET command, else they will not be assigned
+    a address and will not be known to exist by the application software.
+    Normally, the host will respond with a NODEADR command to assign a
+    address to this device.
+
+    VENDOR is the 16 bit vendor ID, TYPE is the 8 bit device type within
+    the vendor, and SERIAL is the 32 bit serial number within that vendor
+    and type.
+
+
+Extended Frame Commands
+
+  This section describes the details of each supported command that can be
+  carried in a extended CAN frame.  The different commands are uniquely
+  identified by their opcode.  As described in the Extended Frames section
+  earlier in this document, the opcode is in the high 10 bits of the
+  extended frame ID.  There are therefore 1024 possible unique commands,
+  with opcodes ranging from 0 to 1023.  No device should ever send a
+  undefined opcode.  However, a bus may contain a mix of old and new
+  devices, with new devices implementing opcodes unknown to the old
+  devices.  All devices must therefore ignore frames with opcodes unknown
+  to them.
+
+  Extended frames are only for devices that have a current valid (1-255)
+  bus address assigned to them.  This bus address is always in the low 8
+  bits of the extended frame ID.  Devices must ignore any frames that do
+  not contain their assigned bus address, and must always include their
+  assigned bus address in any extended frames they send.  This also means
+  that devices with no bus address assigned must ignore all extended
+  frames and must not send extended frames.
+
+  Commands are listed below starting with their name as it appears in
+  other documentation and the source code.  The name is followed by a
+  colon (:), which is followed by the opcode number.  For commands that
+  contain data bytes, the opcode number is followed by the names of the
+  fields in the data bytes.  Fields are listed in data byte order, and in
+  high to low bit order within data bytes.  The highest (most significant)
+  bit of a byte is numbered 7, with the lowest (least significant)
+  numbered 0.  Unless otherwise noted in the command description, the
+  following applies to each data field:
+
+    1 - The size is one byte (8 bits).
+
+    2 - The data format is unsigned integer.
+
+    3 - Fields that straddle byte boundaries contain their most
+        significant bits before the boundary and the remaining less
+        significant bits after.  This means that multi-byte fields are in
+        high to low byte order.
+
+  The defined commands are:
+
+  DIGOUT: 0 mask bits ... mask bits
+
+    Sent by host.
+
+    Set digital outputs to fixed values.  There are two data bytes for
+    each set of 8 digital outputs.  The first data byte is a mask of which
+    outputs to set and the second is the value to set them to.  A MASK bit
+    of 0 causes the corresponding output to be left as it is.  A MASK bit
+    of 1 causes it to be set to the value of the same bit in the BITS
+    byte.  A data value of 1 causes a logic high level and 0 a logic low
+    level.
+
+    The first pair of bytes are for the I/O lines 0 - 7 of this unit, with
+    line 0 in the least significant bits and line 7 in the most
+    significant.  The device must ignore information for lines that can
+    not be digital outputs.  The whole command must be ignored if the
+    number of data bytes is odd.
+
+    CAN frames can contain at most 8 data bytes, meaning one of these
+    messages can set at most 32 I/O lines.  The SEQ field in the frame ID
+    is used to indicate which set of 32 I/O lines this command is for.
+    SEQ 0 means lines 0-31, SEQ 1 is for lines 32-63, etc.  Since the SEQ
+    field is 4 bits wide, this mechanism can address 512 I/O lines, which
+    is more than the 256 maximum per device supported by the system.  SEQ
+    values of 8-15 are therefore invalid.
+
+    Since this command is only for simple digital logic outputs, it has
+    the side effect of configuring any selected outputs to simple digital
+    when such a configuration choice is possible.  For example, the same
+    I/O line may be configurable between a PWM output and a simple
+    digital.  If such a output is selected by this command (its bit in the
+    appropriate MASK byte is set) then it becomes a simple digital output
+    and its PWM period becomes undefined.
+
+  DIGIN: 1 mask bits ... mask bits
+
+    Sent by device when requested by host.
+
+    Each pair of MASK/BITS data bytes indicates the current state of 8
+    digital logic input lines.  A MASK bit value of 1 indicates the line
+    is configured as a digital logic line, and the corresponding bit in
+    BITS is the state of that line.  The value 0 indicates a logic low and
+    1 a logic high.  A MASK bit value of 0 means the I/O line is not a
+    digital logic line.  In that case the corresponding bit in BITS must
+    be 0.
+
+    CAN frames can contain at most 8 data bytes, meaning one of these
+    messages can at most indicate the value of 32 I/O lines.  The SEQ
+    field in the frame ID is used to indicate which set of 32 I/O lines
+    this command is for. SEQ 0 means lines 0-31, SEQ 1 is for lines 32-63,
+    etc.  Since the SEQ field is 4 bits wide, this mechanism can address
+    512 I/O lines, which is more than the 256 maximum per device supported
+    by the system.  SEQ values of 8-15 are therefore invalid.
+
+    The first I/O line indicated by the SEQ field uses bits 0 of the first
+    MASK/BITS pair with the 8th line using bits 7.  The next I/O line uses
+    bits 0 of the next pair, etc.  There must be a even number of data
+    bytes.
+
+    This command is only sent by a device in response to a remote request
+    frame of the same ID.
+
+  DIGICH: 32 mask bits change [mask bits change]
+
+    Sent by device asynchronously.
+
+    Indicates a change in one or more digital input lines.  There are
+    three bytes for every group of 8 digital inputs.  The first I/O line
+    indicated by this command uses bits 0 in the first group with the 8th
+    line using bits 7.  The next I/O line uses bits 0 of the next group,
+    etc.
+
+    The MASK bit for a I/O line set to 1 indicates this line is a digital
+    input.  In that case, the corresponding bit in BITS indicates the
+    current state of the digital input, and the CHANGE bit indicates
+    whether that line has changed since its value was last reported.  When
+    the MASK bit is 0, the other values don't apply and must be set to 0.
+    This command must always have a multiple of 3 data bytes.
+
+    CAN frames can contain at most 8 data bytes, meaning one of these
+    messages can at most indicate the value of 16 I/O lines.  The SEQ
+    field in the frame ID is used to indicate which set of 16 I/O lines
+    this command is for.  SEQ 0 means lines 0-15, SEQ 1 is for lines
+    16-31, etc.  Since the SEQ field is 4 bits wide, this mechanism can
+    address 256 I/O lines, which is the maximum supported per device by
+    the system.
+
+    This command is sent asynchronously by a device when the state of at
+    least one digital input being reported has changed.  Devices may need
+    to be configured to send such changes asynchronously, with possibly a
+    mininum time period between reported changes and other rules.  Such
+    rules are beyond the scope of this command description.
+
+  PWMSET: 129 line period duty
+
+    Set a single line to PWM output mode and set its PWM parameters.  This
+    command is ignored if the I/O line can not be configured to PWM mode.
+
+    LINE is the 0-255 I/O line number.
+
+    PERIOD is the 16 bit 1-65535 PWM period in units of the minimum
+    available PWM slice time.  The PWM slice time can vary from device to
+    device.  The device need not support the full 1-65535 PWM period
+    range. If a lesser range is supported, the device silently clips the
+    value into its valid range.
+
+    DUTY is the 16 bit 0-65535 PWM duty cycle.  This is the number of
+    slices the output will be high each period.  A value of 0 causes the
+    line to be always low, and a value greater than or equal to PERIOD
+    causes the line to be always high.  Otherwise, the average high/low
+    ratio of the I/O line will be DUTY/(PERIOD + 1).
+
+  PWMSETPH: 130 line period duty refline offset
+
+    Same as PWMSET (above), except that the phase of the PWM period is
+    also synchronized to another PWM output.  This command is ignored if
+    the I/O line can not be configured to PWM with relative phase mode.
+
+    The LINE, PERIOD, and DUTY parameters are the same as for the PWMSET
+    command.
+
+    REFLINE is the 0-255 number of the I/O line to reference the phase to.
+    Results are undefined when this is not the number of a I/O line that
+    is configured for PWM output.  This command does not reconfigure or
+    otherwise alter the REFLINE state.
+
+    OFFSET is the 16 bit 0-65535 phase offset of this line's PWM output
+    period with respect to the reference line's.  A value of 0
+    synchronizes to the same phase as the reference line.  A value of 1
+    causes this line to lag the reference line by one PWM slice, etc.
+    Results are undefined when PERIOD is not the same as the reference
+    line's period.  Results are undefined when OFFSET is greater than
+    PERIOD.
+
+  FWINFO: 960 fwver fwseq
+
+    Sent by device when requested by host.
+
+    Identifies the firmware version and sequence number within that
+    version.  FWVER and FWSEQ are both 16 bit unsigned integers.  The
+    exact meaning of the version and sequence number are specific to the
+    vendor, except that the FWVER:FESEQ combination must be unique for
+    each different version of firmware and must monotonically increase
+    with newer builds of the firmware.
+
+    This command is only sent by a device in response to a remote request
+    frame of the same ID.
