@@ -15,6 +15,7 @@ call src_getfrom string string.ins.pas
 call src_getfrom file file.ins.pas
 call src_getfrom stuff stuff.ins.pas
 call src_getfrom picprg picprg picprg.ins.pas
+call src_getfrom pic pic.ins.pas
 call src_getfrom can can.ins.pas
 
 call src_builddate "%srcdir%"
